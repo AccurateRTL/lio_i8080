@@ -1,0 +1,22 @@
+# Copyright AccurateRTL contributors.
+# Licensed under the MIT License, see LICENSE for details.
+# SPDX-License-Identifier: MIT
+
+package:
+  name: lio_i8080
+  
+dependencies:
+  lio_bhv_sfifo:        { git: "https://github.com/AccurateRTL/lio_bhv_sfifo.git", rev: master}
+#  lio_axil_regs_if: { git: "https://gitlab.mriprogress.ru/mcu_cores/ethernet_axi.git", rev: master}
+  
+workspace:
+  checkout_dir: hw/ip
+
+sources:
+  - hw/rtl/lio_i8080.sv
+  
+  # TB sources
+  - target: any(test,simulation)
+    files:
+
+   
