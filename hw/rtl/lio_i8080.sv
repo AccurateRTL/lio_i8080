@@ -2,6 +2,10 @@
 // Licensed under the MIT License, see LICENSE for details.
 // SPDX-License-Identifier: MIT
 
+
+// TODO: Добавить синхронизацию по вычитыванию определенного номера строки
+
+
 module lio_i8080 #(
   parameter A_WIDTH = 32,
   parameter CFG_A_WIDTH = 32,
@@ -69,6 +73,8 @@ logic [DATA_WIDTH-1:0]   reg_rd_data;
 logic                    reg_rd_ack;
 logic        cmd_fifo_full;
 logic        data_fifo_full;
+logic write_cmd;
+logic read_cmd;
 
 typedef enum {
     IDLE,
@@ -82,13 +88,13 @@ typedef enum {
     WAITING_TE_DELAY
 } sm_states;
 
-sm_states stt;
+ sm_states stt;
 
 logic [7:0] cfg_wr_0_len;               // Длина интервала в тактах (задавать на 1 меньше), на котором сигнал WR равен 0
 logic [7:0] cfg_wr_1_len;               // Длина интервала в тактах (задавать на 1 меньше), на котором сигнал WR равен 1
 logic [7:0] cfg_rd_0_len;               // Длина интервала в тактах (задавать на 1 меньше), на котором сигнал RD равен 0
 logic [7:0] cfg_rd_1_len;               // Длина интервала в тактах (задавать на 1 меньше), на котором сигнал RD равен 1
-logic [1:0] cfg_if_sz_in_bytes;         // Ширина интерфейса в байтах
+ logic [1:0] cfg_if_sz_in_bytes;         // Ширина интерфейса в байтах
 logic cfg_te_mode;                      // Режим синхронизации выдачи данных с получением сигнала TE
 logic [15:0] cfg_te_delay;              // Задержка выполнения задания относительно TE
 logic if_read_ack;
@@ -232,10 +238,14 @@ always_ff @(posedge aclk or negedge arstn) begin
   end    
 end 
 
+logic TE_d3, TE_strb;
+
 always_ff @(posedge aclk) begin
   DI_d <= DI;
   TE_d1 <= TE;
   TE_d2 <= TE_d1;
+  TE_d3 <= TE_d2;
+  TE_strb <= (~TE_d3) & (TE_d2);
 end
 
 always_comb begin
@@ -300,15 +310,14 @@ lio_sfifo #(.AW(2),.DW(32)) cmd_fifo (
   .fifo_cnt()  
 );
 
-logic [31:0] data_fifo_dout;
-logic        data_fifo_rd_en;
+ logic [31:0] data_fifo_dout;
+ logic        data_fifo_rd_en;
 logic        data_fifo_wr_en;
 logic        data_fifo_empty;
 
 logic [IF_DATA_SIZE-1:0]  wr_data;
 logic [31:0] wr_word;
-logic write_cmd;
-logic read_cmd;
+
 
 logic [23:0]  if_rd_data;
 logic [7:0]   trans_cnt;        // Счетчик числа тактов в транзакции
@@ -389,7 +398,7 @@ localparam WRITE_PARAM   = 1;
 localparam WRITE_N_PARAM = 2;
 localparam SYNC_CMD       = 3;
 
-logic end_of_word;
+ logic end_of_word;
 
 assign end_of_word = (data_cnt_cur[1:0]==0);
 /*
@@ -419,7 +428,7 @@ always_ff @(posedge aclk or negedge arstn) begin
         int_strb      <= 1'b0;
         trans_cnt     <= '0;
         data_cnt_cur  <= '0;
-        if (!cfg_te_mode)
+//        if (!cfg_te_mode)
           if (write_cmd) begin
             stt           <= WR_0;
             OE            <= 1'b1;
@@ -460,33 +469,40 @@ always_ff @(posedge aclk or negedge arstn) begin
                     data_cnt_max  <= cmd_fifo_dout[23:0];
                   end
                   SYNC_CMD: begin
-                    stt         <= SYNC;
-                    int_strb    <= cmd_fifo_dout[0];
+                    if (cmd_fifo_dout[1])
+                      stt         <= WAITING_TE;
+                    else begin
+                      stt         <= SYNC;
+                      int_strb    <= cmd_fifo_dout[0];
+                    end
                   end
                   default: begin
                   end
                 endcase;
               end   
           end
-        else begin
-          stt <= WAITING_TE;
-        end
+//         else begin
+//           stt <= WAITING_TE;
+//         end
       end
       
       WAITING_TE: begin
         int_strb          <= 1'b0;
         trans_cnt         <= '0;
         data_cnt_cur      <= '0;
-        if (cfg_te_mode)
-          if (TE_d2) begin
+        cmd_fifo_rd_en    <= 1'b0;
+//         if (cfg_te_mode) begin
+          if (TE_strb) begin
             te_delay_cnt <= cfg_te_delay;
             stt          <= WAITING_TE_DELAY;
           end
-        else
-          stt <= IDLE;
+//         end  
+//         else
+//           stt <= IDLE;
       end
    
       WAITING_TE_DELAY: begin
+        data_cnt_cur   <= '0;
         if (te_delay_cnt>0) 
           te_delay_cnt <= te_delay_cnt - 1;
         else begin
@@ -514,15 +530,19 @@ always_ff @(posedge aclk or negedge arstn) begin
                 data_cnt_max  <= cmd_fifo_dout[23:0];
               end
               SYNC_CMD: begin
-                int_strb          <= cmd_fifo_dout[0];
-                stt               <= WAITING_TE;
+                if (cmd_fifo_dout[1])
+                  stt         <= WAITING_TE;
+                else begin
+                  stt         <= SYNC;
+                  int_strb    <= cmd_fifo_dout[0];
+                end
               end
               default: begin
               end
             endcase;
           end   
           else begin
-            stt <= WAITING_TE;
+//             stt <= WAITING_TE;
           end
         end
       end
@@ -555,10 +575,10 @@ always_ff @(posedge aclk or negedge arstn) begin
             end
           end
           else begin
-            if (~cfg_te_mode)
+//             if (~cfg_te_mode)
               stt  <= IDLE;
-            else
-              stt  <= WAITING_TE;
+//             else
+//               stt  <= WAITING_TE_DELAY;   
             DC   <= 1'b1;
             OE   <= 1'b0;
           end
@@ -584,6 +604,7 @@ always_ff @(posedge aclk or negedge arstn) begin
       end
       
       WAITING_DATA: begin
+        cmd_fifo_rd_en <= 1'b0;
         if (~data_fifo_empty) begin
           stt             <= WR_0;
           WR              <= 1'b0;
@@ -596,7 +617,8 @@ always_ff @(posedge aclk or negedge arstn) begin
       end
 
       SYNC: begin
-        stt         <= IDLE;
+        cmd_fifo_rd_en <= 1'b0;
+        stt            <= IDLE;
       end
       
       default: begin
