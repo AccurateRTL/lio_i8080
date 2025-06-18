@@ -2,22 +2,13 @@
 // Licensed under the MIT License, see LICENSE for details.
 // SPDX-License-Identifier: MIT
 
-
-// TODO: Добавить синхронизацию по вычитыванию определенного номера строки
-
-
 module lio_i8080 #(
   parameter A_WIDTH = 32,
   parameter CFG_A_WIDTH = 32,
-  // Width of data bus in bits
   parameter DATA_WIDTH = 32,
-  // Width of address bus in bits
   parameter ADDR_WIDTH = 32,
-  // Width of wstrb (width of data bus in words)
   parameter STRB_WIDTH = (DATA_WIDTH/8),
   parameter IF_DATA_SIZE = 16
-  // Timeout delay (cycles)  
-)
 ( 
    input                       aclk,
    input                       arstn,
@@ -64,12 +55,10 @@ logic [CFG_A_WIDTH-1:0]  reg_wr_addr;
 logic [DATA_WIDTH-1:0]   reg_wr_data;
 logic [STRB_WIDTH-1:0]   reg_wr_strb;
 logic                    reg_wr_en;
-//logic                    reg_wr_wait;
 logic                    reg_wr_ack;
 logic [CFG_A_WIDTH-1:0]  reg_rd_addr;
 logic                    reg_rd_en;
 logic [DATA_WIDTH-1:0]   reg_rd_data;
-//logic                    reg_rd_wait;
 logic                    reg_rd_ack;
 logic        cmd_fifo_full;
 logic        data_fifo_full;
@@ -170,36 +159,6 @@ always_comb begin
     reg_rd_ack = reg_rd_en;
 end
 
-/*
-always_ff @(posedge aclk or negedge arstn) begin
-  if (!arstn)
-    reg_rd_ack <= 1'b0;
-  else  
-    if (reg_rd_en & (!reg_rd_ack))
-      reg_rd_ack <= 1'b1;
-    else
-      reg_rd_ack <= 1'b0;
-end
-*/
-
-// always_ff @(posedge aclk or negedge arstn) begin
-//   TE_d1 <= TE;
-//   TE_d2 <= TE_d1;
-//   
-//   if (cfg_te_mode)
-//     if (TE) begin
-//       te_delay_cnt <= cfg_te_delay;
-//       cmd_en       <= 1'b0;      
-//     end
-//     else
-//       if (te_delay_cnt>0) 
-//         te_delay_cnt <= te_delay_cnt - 1;
-//       else
-//         cmd_en <= 1'b1;      
-//   else
-//    cmd_en <= 1'b1; 
-// end
-
 always_ff @(posedge aclk or negedge arstn) begin
   if (!arstn) begin
     cfg_wr_0_len        <= '0;
@@ -210,6 +169,7 @@ always_ff @(posedge aclk or negedge arstn) begin
     CSn                 <= 1'b1; 
     RSTn                <= 1'b0; 
     cfg_te_mode         <= 1'b0;
+    cfg_te_delay        <= '0;
   end
   else begin
     if ((reg_wr_en))
@@ -238,14 +198,14 @@ always_ff @(posedge aclk or negedge arstn) begin
   end    
 end 
 
-logic TE_d3, TE_strb;
+logic TE_d3, TE_stb;
 
 always_ff @(posedge aclk) begin
   DI_d <= DI;
   TE_d1 <= TE;
   TE_d2 <= TE_d1;
   TE_d3 <= TE_d2;
-  TE_strb <= (~TE_d3) & (TE_d2);
+  TE_stb <= (~TE_d3) & (TE_d2);
 end
 
 always_comb begin
@@ -349,20 +309,18 @@ assign data_fifo_ready = ~data_fifo_full;
 //always_ff @(posedge aclk) begin
 
 //if (IF_DATA_SIZE==16) 
-always_comb begin
+//always_comb begin
+always_ff @(posedge aclk) begin
   if ((cfg_if_sz_in_bytes==2'b10)) begin
-    if (data_cnt_cur[1])
+    if (!data_cnt_cur[1])
       wr_data = wr_word[31:16];
-//    else  
-//      wr_data = wr_word[15:0];
   end
   else begin
     wr_data[15:8] = '0;
     case(data_cnt_cur[1:0])
-//      0: wr_data[7:0] = wr_word[7:0];
-      1: wr_data[7:0] = wr_word[15:8];
-      2: wr_data[7:0] = wr_word[23:16];
-      3: wr_data[7:0] = wr_word[31:24];
+      0: wr_data[7:0] = wr_word[15:8];
+      1: wr_data[7:0] = wr_word[23:16];
+      2: wr_data[7:0] = wr_word[31:24];
       default: begin
       end
     endcase;
@@ -401,13 +359,6 @@ localparam SYNC_CMD       = 3;
  logic end_of_word;
 
 assign end_of_word = (data_cnt_cur[1:0]==0);
-/*
-always_comb
-  if (((cfg_if_sz_in_bytes==2'b10) && (data_cnt_cur[1:0]==2'b10)) || ((cfg_if_sz_in_bytes==2'b01) && (data_cnt_cur[1:0]==2'b11)))  
-    end_of_word = 1'b1;
-  else
-    end_of_word = 1'b0;
-*/    
 
 always_ff @(posedge aclk or negedge arstn) begin
   if (!arstn) begin
@@ -421,6 +372,10 @@ always_ff @(posedge aclk or negedge arstn) begin
     data_cnt_max      <= '0;
     data_cnt_cur      <= '0;
     int_strb          <= 1'b0;
+    DO                <= '0;
+    data_fifo_rd_en   <= 1'b0;
+    te_delay_cnt      <= '0;
+    wr_word           <= '0;
   end
   else
     case (stt)
@@ -492,7 +447,7 @@ always_ff @(posedge aclk or negedge arstn) begin
         data_cnt_cur      <= '0;
         cmd_fifo_rd_en    <= 1'b0;
 //         if (cfg_te_mode) begin
-          if (TE_strb) begin
+          if (TE_stb) begin
             te_delay_cnt <= cfg_te_delay;
             stt          <= WAITING_TE_DELAY;
           end
