@@ -7,6 +7,9 @@ name: '::lio_i8080:'
 
 filesets:
   files_rtl:
+    depend: 
+      - lio_axil_regs_if
+      - lio_sfifo
     file_type: systemVerilogSource
     files:
     - hw/rtl/lio_i8080.sv
