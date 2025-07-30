@@ -200,7 +200,7 @@ end
 logic TE_d3, TE_stb;
 
 always_ff @(posedge aclk) begin
-  DI_d <= DI;
+//  DI_d <= DI;
   TE_d1 <= TE;
   TE_d2 <= TE_d1;
   TE_d3 <= TE_d2;
@@ -354,7 +354,7 @@ end
 localparam WRITE_CMD     = 0;
 localparam WRITE_PARAM   = 1;
 localparam WRITE_N_PARAM = 2;
-localparam SYNC_CMD       = 3;
+localparam SYNC_CMD      = 3;
 
 assign end_of_word = (data_cnt_cur[1:0]==0);
 
@@ -374,6 +374,7 @@ always_ff @(posedge aclk or negedge arstn) begin
     data_fifo_rd_en   <= 1'b0;
     te_delay_cnt      <= '0;
     wr_word           <= '0;
+    DI_d              <= '0;
   end
   else
     case (stt)
@@ -393,7 +394,7 @@ always_ff @(posedge aclk or negedge arstn) begin
           if (read_cmd) begin
             stt           <= RD_0;
             OE            <= 1'b0;
-            DC            <= 1'b1;
+            DC            <= 1'b1;       // ЛУЧШЕ ЗАДАВАТЬ в регистре!
             RD            <= 1'b0;
           end
           else
@@ -531,6 +532,7 @@ always_ff @(posedge aclk or negedge arstn) begin
           stt       <= RD_1;
           RD        <= 1'b1;
           trans_cnt <= '0;
+          DI_d      <= DI;
         end
       end
       

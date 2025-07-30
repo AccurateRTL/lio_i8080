@@ -1,6 +1,6 @@
-module lio_i8080_display_memory #(
+module lio_i8080_display_vip #(
     parameter DATA_WIDTH = 8,     // 8-битные данные
-    parameter MEM_SIZE   = 255  // Размер памяти (64K)
+    parameter MEM_SIZE   = 255    // Размер памяти (64K)
 )(    
     // Объединенная шина адреса/данных (мультиплексированная)
     inout tri [DATA_WIDTH-1:0] d,  // Шина команд/данных
@@ -41,8 +41,8 @@ always_ff @(posedge wr) begin
   else
     case (latched_cmd)
       MEM_WRITE_CMD: begin    
-        mem[wr_addr] = d;
-        wr_addr<=wr_addr+1;
+        mem[wr_addr] <= d;
+        wr_addr      <= wr_addr+1;
       end
       
       default: begin
@@ -52,55 +52,28 @@ end
     
 always @(posedge wr or posedge rd) begin
   if (wr & (~dc)) begin
-    if (d==MEM_READ_CMD)
-      first_rd <= 1'b1;
+    if (d==MEM_READ_CMD) begin
+      rd_addr   <= 0;
+    end  
   end  
-  if (!rd) 
-    first_rd <= 1'b0;
 end    
     
 always @(edge rd) begin
   if (rd) begin
     data_out <= 8'heb;
     data_en  <= 1'b0;
-  end  
+    end  
   else
     if (latched_cmd==MEM_READ_CMD) begin
       data_en  <= 1'b1;
-      if (!first_rd) begin
-        data_out   <= mem[rd_addr];
-        rd_addr    <= rd_addr + 1;
-      end  
-      else 
-        rd_addr    <= '0;
+      data_out   <= mem[rd_addr];
+      rd_addr    <= rd_addr + 1;
     end
-    else 
-      $display("i8080 ERROR: rd without command!\n");
-      
+    else begin
+      $display("i8080 ERROR: rd without command!\n"); 
+      data_out <= 8'heb;
+      data_en  <= 1'b1;
+    end  
 end
     
-  /*  
-    // Основная логика работы памяти
-    always_ff @(posedge clk or posedge reset) begin
-        if (reset) begin
-            // Сброс памяти (опционально)
-            foreach(mem[i]) mem[i] <= 8'h00;
-            data_en <= 1'b0;
-        end else begin
-            // По умолчанию отключаем выход
-            data_en <= 1'b0;
-            
-            // Операция чтения
-            if (!rd) begin
-                data_out <= mem[latched_addr];
-                data_en  <= 1'b1;
-            end
-            
-            // Операция записи
-            if (!wr) begin
-                mem[latched_addr] <= ad;
-            end
-        end
-    end
-   */ 
 endmodule

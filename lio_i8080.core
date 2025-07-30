@@ -14,6 +14,12 @@ filesets:
     files:
     - hw/rtl/lio_i8080.sv
 
+  files_sv_tb:
+    file_type: systemVerilogSource
+    files:
+    - dv/sv/lio_i8080_tb.sv
+    - dv/sv/lio_i8080_display_vip.sv
+    
   files_cocotb:
     files:
       - dv/cocotb/test_lio_i8080.py
@@ -24,7 +30,7 @@ scripts:
     cmd: [$(eval export PYTHONPATH = $(shell pwd)/../../../dv/cocotb:$PYTHONPATH)]
  
   create_dump_file: 
-    cmd: ['printf "module iverilog_dump();\n initial begin \n \$$dumpfile(\"dump.fst\");\n    \$$dumpvars(0 , lio_i8080);\n end\n endmodule" > iverilog_dump.v']
+    cmd: ['printf "module iverilog_dump();\n initial begin \n \$$dumpfile(\"dump.fst\");\n    \$$dumpvars(0 , lio_i8080_tb);\n end\n endmodule" > iverilog_dump.v']
 
   copy_tb: 
     cmd: ['cp ../../../dv/cocotb/test_lio_i8080.py ./test_lio_i8080.py']
@@ -44,10 +50,10 @@ targets:
     - files_rtl
 
   sim_iverilog:
-    toplevel: lio_i8080
+    toplevel: lio_i8080_tb
     hooks:
       pre_build: [copy_tb, create_dump_file]
-    filesets: [files_rtl, files_cocotb]
+    filesets: [files_rtl, files_sv_tb, files_cocotb]
     flow: sim
     flow_options:
         tool: icarus
@@ -57,11 +63,11 @@ targets:
         timescale: 1ns/1ns    
         
   sim_verilator:
-    toplevel: lio_i8080
+    toplevel: lio_i8080_tb
     hooks:
       pre_build: [copy_tb]
       post_run:  [create_coverage_data]
-    filesets: [files_rtl, files_cocotb]
+    filesets: [files_rtl, files_sv_tb, files_cocotb]
     flow: sim
     flow_options:
         tool: verilator
