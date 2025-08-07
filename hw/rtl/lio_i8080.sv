@@ -85,8 +85,8 @@ logic [7:0]  cfg_wr_1_len;               // Длина интервала в т�
 logic [7:0]  cfg_rd_0_len;               // Длина интервала в тактах (задавать на 1 меньше), на котором сигнал RD равен 0
 logic [7:0]  cfg_rd_1_len;               // Длина интервала в тактах (задавать на 1 меньше), на котором сигнал RD равен 1
 logic [1:0]  cfg_if_sz_in_bytes;         // Ширина интерфейса в байтах
-logic        cfg_te_mode;                // Режим синхронизации выдачи данных с получением сигнала TE
 logic [15:0] cfg_te_delay;               // Задержка выполнения задания относительно TE
+logic        cfg_inv_dc;                 // Меняет полярность сигнала DC для режима выполнения заданий на противоположную: 1 - команда, 0 - данные.
 logic if_read_ack;
 logic if_write_ack;
 logic [IF_DATA_SIZE-1:0]     DI_d;
@@ -101,6 +101,7 @@ parameter logic [7:0] I8080_WINDOW_REG_OFS          = 8'h0C;
 parameter logic [7:0] I8080_CMD_FIFO_OFS            = 8'h10;
 parameter logic [7:0] I8080_DATA_FIFO_OFS           = 8'h14;
 parameter logic [7:0] I8080_CSN_REG_OFS             = 8'h18;
+parameter logic [7:0] I8080_FIFO_STATUS_REG         = 8'h1C;
 
 lio_axil_regs_if  #(.AWIDTH(8)) lio_axil_regs_if_i(
   .aclk(aclk),                                          // in
@@ -167,7 +168,7 @@ always_ff @(posedge aclk or negedge arstn) begin
     cfg_if_sz_in_bytes  <= 2'b01;
     CSn                 <= 1'b1; 
     RSTn                <= 1'b0; 
-    cfg_te_mode         <= 1'b0;
+    cfg_inv_dc          <= 1'b0;
     cfg_te_delay        <= '0;
   end
   else begin
@@ -182,7 +183,7 @@ always_ff @(posedge aclk or negedge arstn) begin
         
         I8080_GONFIG_REG_1_OFS: begin
           cfg_te_delay         <= reg_wr_data[31:16];
-          cfg_te_mode          <= reg_wr_data[5];
+          cfg_inv_dc           <= reg_wr_data[5];
           RSTn                 <= reg_wr_data[4];
           cfg_if_sz_in_bytes   <= reg_wr_data[1:0];
         end      
@@ -224,7 +225,7 @@ always_comb begin
 
       I8080_GONFIG_REG_1_OFS: begin
         reg_rd_data[31:16] = cfg_te_delay;
-        reg_rd_data[5]     = cfg_te_mode;
+        reg_rd_data[5]     = cfg_inv_dc;
         reg_rd_data[4]     = RSTn; 
         reg_rd_data[1:0]   = cfg_if_sz_in_bytes; 
       end           
@@ -232,7 +233,14 @@ always_comb begin
       I8080_WINDOW_REG_OFS: begin
         reg_rd_data[IF_DATA_SIZE-1:0]  = DI_d;
       end           
-
+      
+      I8080_FIFO_STATUS_REG: begin
+        reg_rd_data[3]  = data_fifo_full;
+        reg_rd_data[2]  = data_fifo_empty;
+        reg_rd_data[1]  = cmd_fifo_full;
+        reg_rd_data[0]  = cmd_fifo_empty;
+      end           
+      
       default: begin
         reg_rd_data[31:0] = '0;        
       end
@@ -306,10 +314,6 @@ lio_sfifo #(.AW(2),.DW(32)) data_fifo (
 
 assign data_fifo_ready = ~data_fifo_full;
 
-//always_ff @(posedge aclk) begin
-
-//if (IF_DATA_SIZE==16) 
-//always_comb begin
 always_ff @(posedge aclk) begin
   if ((cfg_if_sz_in_bytes==2'b10)) begin
     if (!data_cnt_cur[1])
@@ -318,9 +322,9 @@ always_ff @(posedge aclk) begin
   else begin
     wr_data[15:8] <= '0;
     case(data_cnt_cur[1:0])
-      0: wr_data[7:0] <= wr_word[15:8];
-      1: wr_data[7:0] <= wr_word[23:16];
-      2: wr_data[7:0] <= wr_word[31:24];
+      1: wr_data[7:0] <= wr_word[15:8];
+      2: wr_data[7:0] <= wr_word[23:16];
+      3: wr_data[7:0] <= wr_word[31:24];
       default: begin
       end
     endcase;
@@ -394,7 +398,8 @@ always_ff @(posedge aclk or negedge arstn) begin
           if (read_cmd) begin
             stt           <= RD_0;
             OE            <= 1'b0;
-            DC            <= 1'b1;       // ЛУЧШЕ ЗАДАВАТЬ в регистре!
+            //DC            <= 1'b1;       // ЛУЧШЕ ЗАДАВАТЬ в регистре!
+            DC            <= reg_wr_data[31];
             RD            <= 1'b0;
           end
           else
@@ -405,7 +410,7 @@ always_ff @(posedge aclk or negedge arstn) begin
                   stt           <= WR_0;
                   OE            <= 1'b1;
                   DO            <= cmd_fifo_dout[IF_DATA_SIZE-1:0];
-                  DC            <= 1'b0;
+                  DC            <= cfg_inv_dc;
                   WR            <= 1'b0;
                   data_cnt_max  <= '0;
                 end
@@ -413,7 +418,7 @@ always_ff @(posedge aclk or negedge arstn) begin
                   stt           <= WR_0;
                   OE            <= 1'b1;
                   DO            <= cmd_fifo_dout[IF_DATA_SIZE-1:0];
-                  DC            <= 1'b1;
+                  DC            <= ~cfg_inv_dc;
                   WR            <= 1'b0;
                   data_cnt_max      <= '0;
                 end

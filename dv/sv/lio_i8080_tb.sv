@@ -26,7 +26,9 @@ module lio_i8080_tb #(
     input                       rready,
     output logic [1:0]          rresp,
 
-    input                       TE,   
+    input                       TE,
+    input                       if_mode,
+    
     output logic                int_strb    
 );
 
@@ -83,10 +85,10 @@ lio_i8080 #(.IF_DATA_SIZE(IF_DATA_SIZE)) lio_i8080_i(
 assign D  = (OE  ? DO : 'z);
 assign DI = (!OE ? D : DO);
 
-lio_i8080_display_vip #(
-    .DATA_WIDTH(IF_DATA_SIZE), 
-    .MEM_SIZE(255)
-) lio_i8080_display_vip_i(    
+lio_i8080_display_vip lio_i8080_display_vip_i(  
+    .if_mode,            // Ширина шины данных 0 - 8 бит, 1 - 16 бит
+    .rst_n(RSTn),        // Сигнал сброса (активный низкий)
+
     .d(D),               // Шина команд/данных
     .ce(CSn),            // Сигнал выбора устройства
     .dc(DC),             // Сигнал выбора команда(0)/данные(1) 
